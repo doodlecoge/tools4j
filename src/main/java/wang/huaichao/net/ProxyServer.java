@@ -8,7 +8,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
-import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,9 +34,15 @@ public class ProxyServer {
 
     private static class Worker extends Thread {
         private static final int soTimeout = 10000;
+
         private Socket csocket;
+        private Socket ssocket;
+        private final int bsize = 2048;
+        private final int hsize = bsize / 2;
+        private final byte[] buffer = new byte[bsize];
+
         private static final Pattern ReqPtn = Pattern.compile(
-                "^(get|post) +https?://([^ /]+)[^ ]* +(http/.*)$",
+                "^(get|post|head|put|delete|connect) +([a-z]+)://([^ /]+)[^ ]* +(http/.*)$",
                 Pattern.CASE_INSENSITIVE
         );
 
@@ -45,189 +52,203 @@ public class ProxyServer {
             try {
                 this.csocket.setSoTimeout(soTimeout);
             } catch (SocketException e) {
+                e.printStackTrace();
             }
         }
 
-        private ByteArrayOutputStream readHttpGetRequest(InputStream is)
-                throws IOException {
-            int size = 1024, hsize = size / 2, total, idx, len, off = 0;
-            byte[] buffer = new byte[size];
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            total = len = _read(is, buffer, off, hsize);
-            if (len == -1) return baos;
-            baos.write(buffer, off, len);
 
+        private void handleRequest() throws IOException {
+            InputStream cis = csocket.getInputStream();
+            OutputStream sos = null;
+            int off = 0, len, idx, total, pos = 0;
+            ByteArrayOutputStream cache = new ByteArrayOutputStream();
+            String line;
+
+            total = len = _read(cis, buffer, off, hsize);
+            if (len == -1) {
+                System.out.println("===-1===");
+                return;
+            }
+            cache.write(buffer, off, len);
+
+            // get first line
             for (idx = 0; idx < total; idx++) {
                 if (idx + 3 >= total) {
-                    off = (off + hsize) % size;
-                    len = _read(is, buffer, off, hsize);
+                    off = (off + hsize) % bsize;
+                    len = _read(cis, buffer, off, hsize);
                     if (len == -1) break;
-                    baos.write(buffer, off, len);
                     total += len;
+                    if (sos != null)
+                        _write(sos, buffer, off, len);
+                    else
+                        cache.write(buffer, off, len);
                 }
-                if (buffer[idx % size] != '\r') continue;
-                if (buffer[(idx + 1) % size] == '\n' &&
-                        buffer[(idx + 2) % size] == '\r' &&
-                        buffer[(idx + 3) % size] == '\n') {
+                if (buffer[idx % bsize] != '\r') continue;
+                if (sos == null && buffer[(idx + 1) % bsize] == '\n') {
+                    line = extractLine(pos, idx - pos);
+                    ssocket = _connectServer(line);
+                    if (ssocket == null) return;
+                    sos = ssocket.getOutputStream();
+                    sos.write(cache.toByteArray(), 0, cache.size());
+                }
+                if (buffer[(idx + 1) % bsize] == '\n' &&
+                        buffer[(idx + 2) % bsize] == '\r' &&
+                        buffer[(idx + 3) % bsize] == '\n') {
                     break;
                 }
             }
-            return baos;
         }
 
+        private void handleResponse() throws IOException {
+            if (ssocket == null) return;
+            InputStream sis = ssocket.getInputStream();
+            OutputStream cos = csocket.getOutputStream();
 
-        public void pip(InputStream is, OutputStream os) throws IOException {
-            int total = 0, len, size = 1024, hsize = size / 2, off = 0, idx = 0;
-            byte[] last4b = {0, 0, 0, 0};
-            byte[] buffer = new byte[size];
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            int off = 0, pos = 0, idx, len, total;
+            String line;
+            HttpResponse resp = new HttpResponse();
+            boolean firstLine = true;
 
-            // get headers
-            total = len = _read(is, buffer, off, hsize);
-            if (len == -1) return;
-            os.write(buffer, off, len);
-
-            System.out.println("======================================");
-            printBuff(buffer, off, len);
+            total = len = _read(sis, buffer, off, hsize);
+            _write(cos, buffer, off, len);
 
             for (idx = 0; idx < total; idx++) {
-                // fill next half-buffer if data not sufficient for analyzing
                 if (idx + 3 >= total) {
-                    baos.write(buffer, off, len);
-                    off = (off + hsize) % size;
-                    len = _read(is, buffer, off, hsize);
+                    off = (off + hsize) % bsize;
+                    len = _read(sis, buffer, off, hsize);
+                    if (len == -1) break;
+                    _write(cos, buffer, off, len);
                     total += len;
-                    os.write(buffer, off, len);
-                    System.out.println("======================================");
-                    printBuff(buffer, off, len);
                 }
 
-                if (buffer[idx % size] != '\r') continue;
-
-                if (buffer[(idx + 1) % size] == '\n' &&
-                        buffer[(idx + 2) % size] == '\r' &&
-                        buffer[(idx + 3) % size] == '\n') {
-                    baos.write(buffer, off,
-                            (idx + 3) % hsize - off % hsize + 1
-                    );
-                    break;
-                } else idx += 3;
-            }
-
-            String header = baos.toString();
-            Pattern ptn = Pattern.compile(
-                    "content-length: (\\d+)", Pattern.CASE_INSENSITIVE
-            );
-            Matcher mat = ptn.matcher(header);
-
-            if (mat.find()) {
-                int left = Integer.valueOf(mat.group(1)) - total + 4 + idx;
-                while (left > 0) {
-                    len = _read(is, buffer, 0, size);
-                    if (len == -1) continue;
-                    os.write(buffer, 0, len);
-                    left -= len;
-                }
-            } else {
-                // consume rest of traffic payload
-                while (true) {
-                    try {
-                        len = _read(is, buffer, 0, size);
-                        if (len == -1) break;
-                        os.write(buffer, 0, len);
-
-                        System.out.println(len);
-                        System.out.println("=================================");
-                        printBuff(buffer, 0, len);
-
-                        if (len < 4) {
-                            for (int i = 0; i < 4 - len; i++) {
-                                last4b[i] = last4b[i + len];
-                            }
-                            for (int i = 0; i < len; i++) {
-                                last4b[4 - len + i] = buffer[i];
-                            }
-                        } else {
-                            for (int i = 0; i < 4; i++) {
-                                last4b[i] = buffer[len - 4 + i];
-                            }
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        if (last4b[0] == '\r' && last4b[1] == '\n' &&
-                                last4b[2] == '\r' && last4b[3] == '\n') {
-                            break;
-                        }
+                if (buffer[idx % bsize] != '\r') continue;
+                if (buffer[(idx + 1) % bsize] == '\n') {
+                    if (idx == pos) break;
+                    line = extractLine(pos, idx - pos);
+                    pos = idx + 2;
+                    if (firstLine) {
+                        resp.addStatusLine(line);
+                        firstLine = false;
+                    } else {
+                        resp.addHeaderLine(line);
                     }
                 }
             }
+
+            String length = resp.headers.get("content-length");
+            if (length == null) {
+                System.err.println("no header: content-length");
+            } else {
+                int remain = Integer.valueOf(length) - total + idx + 4;
+                while (remain > 0) {
+                    len = _read(sis, buffer, 0, bsize);
+                    if (len == -1) break;
+                    remain -= len;
+                    _write(cos, buffer, 0, len);
+                }
+            }
         }
 
+        private String extractLine(int pos, int len) {
+            pos = pos % bsize;
+            String line;
+            if (pos + len > bsize) {
+                line = new String(buffer, pos, bsize - pos);
+                line += new String(buffer, 0, len + pos - bsize);
+            } else {
+                line = new String(buffer, pos, len);
+            }
+            return line;
+        }
+
+        private Socket _connectServer(String reqline) throws IOException {
+            Matcher matcher = ReqPtn.matcher(reqline);
+            Socket socket = null;
+            int port = 80;
+            if (matcher.find()) {
+                String[] split = matcher.group(3).split(":");
+                if (split.length == 2) port = Integer.valueOf(split[1]);
+                socket = new Socket(split[0], port);
+            }
+            return socket;
+        }
 
         private void printBuff(byte[] bytes, int off, int len) {
             String str = Formatter.toAscii(bytes, off, len);
             System.out.println(str);
         }
 
-        private int _read(InputStream is, byte[] buffer, int off, int size) throws IOException {
+        private int _read(InputStream is, byte[] buffer, int off, int size)
+                throws IOException {
             int len = -1;
             for (int i = 0; i < 3; i++) {
                 try {
-                    return is.read(buffer, off, size);
+                    len = is.read(buffer, off, size);
+                    if (len > 0) {
+                        System.out.println("====== read");
+                        printBuff(buffer, off, len);
+                    }
+                    return len;
                 } catch (SocketTimeoutException e) {
+                    e.printStackTrace();
                 }
             }
             return len;
         }
 
-        private void _close(InputStream is) {
-            try {
-                is.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        private void _write(OutputStream os, byte[] buffer, int off, int len)
+                throws IOException {
+            os.write(buffer, off, len);
+            os.flush();
+            System.out.println("====== write");
+            printBuff(buffer, off, len);
         }
 
         @Override
         public void run() {
-            ByteArrayOutputStream baos = null;
-            InputStream cis = null;
             try {
-                cis = this.csocket.getInputStream();
-                baos = readHttpGetRequest(cis);
-            } catch (IOException e) {
-                _close(cis);
-                return;
-            }
-
-            System.out.println();
-            System.out.println();
-            System.out.println("======================================req");
-            printBuff(baos.toByteArray(), 0, baos.size());
-
-            String line = baos.toString().split("\r\n")[0];
-            Matcher mat = ReqPtn.matcher(line);
-            String host;
-            int port = 80;
-
-            if (mat.find()) {
-                String[] hostport = mat.group(2).split(":");
-                host = hostport[0];
-                if (hostport.length == 2)
-                    port = Integer.valueOf(hostport[1]);
-            } else {
-                return;
-            }
-
-            try {
-                Socket socket = new Socket(host, port);
-                socket.setSoTimeout(soTimeout);
-                InputStream is = socket.getInputStream();
-                OutputStream os = socket.getOutputStream();
-                os.write(baos.toByteArray());
-                pip(is, this.csocket.getOutputStream());
+                handleRequest();
+                handleResponse();
+                csocket.close();
+                ssocket.close();
             } catch (IOException e) {
                 e.printStackTrace();
+            }
+        }
+    }
+
+    private static final class HttpResponse {
+        private static final Pattern statusPtn = Pattern.compile(
+                "^http/\\d\\.\\d (\\d+) .+$",
+                Pattern.CASE_INSENSITIVE
+        );
+        private static final Pattern headerPtn = Pattern.compile(
+                "^([\\w-]+):(.+)$",
+                Pattern.CASE_INSENSITIVE
+        );
+
+        private int code;
+        private Map<String, String> headers = new HashMap<String, String>();
+
+
+        public void addStatusLine(String line) {
+            // http/1.1 200 ok
+            Matcher matcher = statusPtn.matcher(line);
+            if (matcher.find()) {
+                code = Integer.valueOf(matcher.group(1));
+            } else {
+                System.err.println(line);
+            }
+        }
+
+        public void addHeaderLine(String line) {
+            Matcher matcher = headerPtn.matcher(line);
+            if (matcher.find()) {
+                String key = matcher.group(1).trim().toLowerCase();
+                String val = matcher.group(2).trim();
+                headers.put(key, val);
+            } else {
+                System.err.println(line);
             }
         }
     }

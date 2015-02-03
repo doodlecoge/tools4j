@@ -45,20 +45,23 @@ public class Formatter {
     }
 
     public static String toAscii(byte[] bytes, int off, int len) {
-        len = Math.min(len + off, bytes.length) - off;
+        int size = bytes.length, j = 0;
+        byte b;
         StringBuffer sb = new StringBuffer();
-        for (int i = off; i < len; i++) {
-            if (i != 0) {
-                if (i % 32 == 0) {
+        for (int i = off; i < off + len; i++, j++) {
+            if (j != 0) {
+                if (j % 32 == 0) {
                     sb.append("\n");
-                } else if (i % 8 == 0) {
+                } else if (j % 8 == 0) {
                     sb.append("  ");
                 }
             }
-            if (bytes[i] > 31 && bytes[i] < 127) {
-                sb.append((char) bytes[i] + "  ");
+
+            b = bytes[i % size];
+            if (b > 31 && b < 127) {
+                sb.append((char) b + "  ");
             } else {
-                sb.append(byte2hex(bytes[i]) + " ");
+                sb.append(byte2hex(b) + " ");
             }
         }
         return sb.toString();
