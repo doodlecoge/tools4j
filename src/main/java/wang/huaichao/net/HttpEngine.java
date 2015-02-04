@@ -20,11 +20,11 @@ public class HttpEngine {
     }
 
     public ByteArrayOutputStream getRaw(String url) throws IOException {
-        return _exec(Method.GET, url, null);
+        return _exec(Method.GET, url, null, null);
     }
 
     public String get(String url) throws IOException {
-        ByteArrayOutputStream baos = _exec(Method.GET, url, null);
+        ByteArrayOutputStream baos = _exec(Method.GET, url, null, null);
         return baos.toString();
     }
 
@@ -52,12 +52,14 @@ public class HttpEngine {
     }
 
     public String post(String url, String data) throws IOException {
-        ByteArrayOutputStream baos = _exec(Method.POST, url, data);
+        ByteArrayOutputStream baos = _exec(Method.POST, url, data, null);
         return baos.toString();
     }
 
 
-    private ByteArrayOutputStream _exec(Method method, String url, String data) throws IOException {
+    private ByteArrayOutputStream _exec(
+            Method method, String url, String data, Map<String, String> headers)
+            throws IOException {
         CookieHandler.setDefault(cookieManager);
 
         URLConnection uconn;
@@ -71,6 +73,11 @@ public class HttpEngine {
         if (method == Method.POST) hconn.setDoOutput(true);
         hconn.setReadTimeout(readTimeout);
         hconn.setConnectTimeout(connTimeout);
+        if (headers != null) {
+            for (String key : headers.keySet()) {
+                hconn.setRequestProperty(key, headers.get(key));
+            }
+        }
         hconn.connect();
         if (method == Method.POST && data != null) {
             OutputStream os = hconn.getOutputStream();
