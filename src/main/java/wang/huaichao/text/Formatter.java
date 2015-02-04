@@ -1,7 +1,5 @@
 package wang.huaichao.text;
 
-import java.io.ByteArrayOutputStream;
-
 /**
  * Created by Administrator on 2015/2/2.
  */
@@ -25,23 +23,7 @@ public class Formatter {
     }
 
     public static String toAscii(byte[] bytes, int len) {
-        len = Math.min(len, bytes.length);
-        StringBuffer sb = new StringBuffer();
-        for (int i = 0; i < len; i++) {
-            if (i != 0) {
-                if (i % 32 == 0) {
-                    sb.append("\n");
-                } else if (i % 8 == 0) {
-                    sb.append("  ");
-                }
-            }
-            if (bytes[i] > 31 && bytes[i] < 127) {
-                sb.append((char) bytes[i] + "  ");
-            } else {
-                sb.append(byte2hex(bytes[i]) + " ");
-            }
-        }
-        return sb.toString();
+        return toAscii(bytes, 0, len);
     }
 
     public static String toAscii(byte[] bytes, int off, int len) {
@@ -57,6 +39,10 @@ public class Formatter {
                 }
             }
 
+            if (j % 32 == 0) {
+                sb.append(prepend(Integer.toHexString(j), 8, '0') + "   ");
+            }
+
             b = bytes[i % size];
             if (b > 31 && b < 127) {
                 sb.append((char) b + "  ");
@@ -65,6 +51,20 @@ public class Formatter {
             }
         }
         return sb.toString();
+    }
+
+    public static String prepend(String tag, int len, char pad) {
+        int n = len - tag.length();
+        if (n < 1) return tag;
+        for (int i = 0; i < n; i++) tag = pad + tag;
+        return tag;
+    }
+
+    public static String append(String tag, int len, char pad) {
+        int n = len - tag.length();
+        if (n < 1) return tag;
+        for (int i = 0; i < n; i++) tag += pad;
+        return tag;
     }
 
     public static String byte2hex(byte b) {
