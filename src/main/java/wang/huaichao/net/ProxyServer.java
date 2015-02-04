@@ -20,10 +20,12 @@ public class ProxyServer {
     public ProxyServer(int port) {
         try {
             ServerSocket server = new ServerSocket(port);
+            int n = 0;
             while (true) {
+                n++;
                 Socket socket = server.accept();
-                System.out.println("==============new connection===============");
-                new Worker(socket).start();
+                System.out.println("==============new connection " + n + "===============");
+                new Worker(socket, n).start();
 //                break;
             }
         } catch (IOException e) {
@@ -35,6 +37,7 @@ public class ProxyServer {
     private static class Worker extends Thread {
         private static final int soTimeout = 10000;
 
+        private int id;
         private Socket csocket;
         private Socket ssocket;
         private final int bsize = 2048;
@@ -46,8 +49,10 @@ public class ProxyServer {
                 Pattern.CASE_INSENSITIVE
         );
 
-        public Worker(Socket socket) {
+        public Worker(Socket socket, int id) {
             this.csocket = socket;
+            this.id = id;
+
 
             try {
                 this.csocket.setSoTimeout(soTimeout);
@@ -89,7 +94,7 @@ public class ProxyServer {
                     ssocket = _connectServer(line);
                     if (ssocket == null) return;
                     sos = ssocket.getOutputStream();
-                    sos.write(cache.toByteArray(), 0, cache.size());
+                    _write(sos, cache.toByteArray(), 0, cache.size());
                 }
                 if (buffer[(idx + 1) % bsize] == '\n' &&
                         buffer[(idx + 2) % bsize] == '\r' &&
@@ -136,15 +141,68 @@ public class ProxyServer {
             }
 
             String length = resp.headers.get("content-length");
-            if (length == null) {
-                System.err.println("no header: content-length");
-            } else {
+            String encoding = resp.headers.get("transfer-encoding");
+            // fixme: batch mode no content-length field
+            if (length != null) {
                 int remain = Integer.valueOf(length) - total + idx + 4;
                 while (remain > 0) {
                     len = _read(sis, buffer, 0, bsize);
                     if (len == -1) break;
                     remain -= len;
                     _write(cos, buffer, 0, len);
+                }
+            } else if (encoding.equalsIgnoreCase("chunked")) {
+                idx += 2;
+                pos += 2;
+                if (idx >= total) {
+                    off = (off + hsize) % bsize;
+                    len = _read(sis, buffer, off, hsize);
+                    if (len == -1) {
+                        System.out.println("...-1...");
+                        return;
+                    }
+                    _write(cos, buffer, off, len);
+                    total += len;
+                }
+                int chunkSize;
+                for (; idx < total; idx++) {
+                    if (idx >= total) {
+                        off = (off + hsize) % bsize;
+                        len = _read(sis, buffer, off, hsize);
+                        if (len == -1) break;
+                        _write(cos, buffer, off, len);
+                        total += len;
+                    }
+
+                    if (buffer[idx % bsize] != '\r') continue;
+
+                    chunkSize = hex2int(extractLine(pos, idx - pos));
+                    System.out.println("chunk size: " + chunkSize);
+                    if (chunkSize == 0) {
+                        if (idx + 1 == total) {
+                            off = (off + hsize) % bsize;
+                            len = _read(sis, buffer, off, hsize);
+                            _write(cos, buffer, off, len);
+                        }
+                        break;
+                    }
+                    int remain = idx + chunkSize + 4 - total;
+                    System.out.println("remain: " + remain);
+                    System.out.println("pos: " + pos);
+                    System.out.println("idx: " + idx);
+                    while (remain > 0) {
+                        off = (off + hsize) % bsize;
+                        len = _read(sis, buffer, off, hsize);
+                        if (len == -1) {
+                            System.out.println("===-1...");
+                            break;
+                        }
+                        _write(cos, buffer, off, len);
+                        remain -= len;
+                        total += len;
+                    }
+                    pos += chunkSize + 4;
+                    idx += chunkSize + 3;
                 }
             }
         }
@@ -159,6 +217,19 @@ public class ProxyServer {
                 line = new String(buffer, pos, len);
             }
             return line;
+        }
+
+        private int hex2int(String hex) {
+            char[] chars = hex.toCharArray();
+            int r = 0;
+            for (char chr : chars) {
+                r = r * 16 + char2int(chr);
+            }
+            return r;
+        }
+
+        private int char2int(char c) {
+            return c - 'a' >= 0 ? c - 'a' + 10 : c - '0';
         }
 
         private Socket _connectServer(String reqline) throws IOException {
@@ -185,7 +256,10 @@ public class ProxyServer {
                 try {
                     len = is.read(buffer, off, size);
                     if (len > 0) {
-                        System.out.println("====== read");
+                        System.out.println();
+                        System.out.println();
+                        System.out.println();
+                        System.out.println("====== read: " + id + ", " + len);
                         printBuff(buffer, off, len);
                     }
                     return len;
@@ -200,20 +274,26 @@ public class ProxyServer {
                 throws IOException {
             os.write(buffer, off, len);
             os.flush();
-            System.out.println("====== write");
+
+            System.out.println();
+            System.out.println();
+            System.out.println();
+            System.out.println("====== write: " + id + ", " + len);
             printBuff(buffer, off, len);
         }
 
         @Override
         public void run() {
+            System.out.println("==================start");
             try {
                 handleRequest();
                 handleResponse();
                 csocket.close();
-                ssocket.close();
+                if (ssocket != null) ssocket.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
+            System.out.println("==================stop: " + id);
         }
     }
 
