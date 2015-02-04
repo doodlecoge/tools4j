@@ -1,6 +1,7 @@
 package wang.huaichao.net;
 
 
+import wang.huaichao.io.HttpInputStream;
 import wang.huaichao.text.Formatter;
 
 import java.io.*;
@@ -61,7 +62,6 @@ public class ProxyServer {
             }
         }
 
-
         private void handleRequest() throws IOException {
             InputStream cis = csocket.getInputStream();
             OutputStream sos = null;
@@ -118,7 +118,7 @@ public class ProxyServer {
             _write(cos, buffer, off, len);
 
             for (idx = 0; idx < total; idx++) {
-                if (idx + 3 >= total) {
+                if (idx + 1 >= total) {
                     off = (off + hsize) % bsize;
                     len = _read(sis, buffer, off, hsize);
                     if (len == -1) break;
@@ -127,22 +127,26 @@ public class ProxyServer {
                 }
 
                 if (buffer[idx % bsize] != '\r') continue;
-                if (buffer[(idx + 1) % bsize] == '\n') {
-                    if (idx == pos) break;
-                    line = extractLine(pos, idx - pos);
-                    pos = idx + 2;
-                    if (firstLine) {
-                        resp.addStatusLine(line);
-                        firstLine = false;
-                    } else {
-                        resp.addHeaderLine(line);
-                    }
-                }
+                if (buffer[(idx + 1) % bsize] != '\n') continue;
+
+                // end of response header
+                if (idx == pos) break;
+
+                // get a response header line
+                line = extractLine(pos, idx - pos);
+
+                pos = idx + 2;
+
+                if (firstLine) {
+                    resp.addStatusLine(line);
+                    firstLine = false;
+                } else resp.addHeaderLine(line);
             }
 
             String length = resp.headers.get("content-length");
             String encoding = resp.headers.get("transfer-encoding");
-            // fixme: batch mode no content-length field
+
+            // response header contains `content-length` field
             if (length != null) {
                 int remain = Integer.valueOf(length) - total + idx + 4;
                 while (remain > 0) {
@@ -151,9 +155,14 @@ public class ProxyServer {
                     remain -= len;
                     _write(cos, buffer, 0, len);
                 }
-            } else if (encoding.equalsIgnoreCase("chunked")) {
+            }
+            // response use `transfer-encoding: chunked`
+            else if (encoding.equalsIgnoreCase("chunked")) {
+                // skip \r\n
                 idx += 2;
                 pos += 2;
+
+                // fill some data if exhaust
                 if (idx >= total) {
                     off = (off + hsize) % bsize;
                     len = _read(sis, buffer, off, hsize);
@@ -164,7 +173,9 @@ public class ProxyServer {
                     _write(cos, buffer, off, len);
                     total += len;
                 }
+
                 int chunkSize;
+
                 for (; idx < total; idx++) {
                     if (idx >= total) {
                         off = (off + hsize) % bsize;
