@@ -22,6 +22,25 @@ public class Formatter {
         return sb.toString();
     }
 
+    public static String toHexString(byte[] bytes, int off, int len) {
+        StringBuffer sb = new StringBuffer();
+        int size = bytes.length, j = 0, width = 32, colwidth = 8;
+        for (int i = 0; i < len; i++, j++) {
+            if (j != 0) {
+                if (j % width == 0) {
+                    sb.append("\n");
+                } else if (j % colwidth == 0) {
+                    sb.append("  ");
+                }
+            }
+            if (j % 32 == 0) {
+                sb.append(prepend(Integer.toHexString(j), 8, '0') + "   ");
+            }
+            sb.append(byte2hex(bytes[j % size]) + ' ');
+        }
+        return sb.toString();
+    }
+
     public static String toAscii(byte[] bytes, int len) {
         return toAscii(bytes, 0, len);
     }
