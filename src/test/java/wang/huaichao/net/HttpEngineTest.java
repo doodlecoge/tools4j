@@ -5,6 +5,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import sun.org.mozilla.javascript.internal.json.JsonParser;
+import wang.huaichao.ThreadPool;
 import wang.huaichao.io.FileHelper;
 import wang.huaichao.text.Formatter;
 
@@ -29,15 +30,17 @@ public class HttpEngineTest {
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        HttpEngine eng = new HttpEngine();
-        String surl = "http://www.cilook.net/book/0/47/";
-        String dir = "e:\\tmp\\";
+    static String surl = "http://www.cilook.net/book/0/47/";
+    static String dir = "e:\\tmp\\";
+    static HttpEngine eng = new HttpEngine();
 
-//        String s = eng.getRaw(surl).toString("gbk");
-//        System.out.println(s);
+    public static void main(String[] args) throws IOException, InterruptedException {
 
-        Document category = Jsoup.parse(new File("E:\\workspace\\java\\tools4j\\a.html"), "gbk");
+
+        String fLocalIdx = "E:\\tmp\\a.html";
+//        FileHelper.write(fLocalIdx, eng.getRaw(surl));
+
+        Document category = Jsoup.parse(new File(fLocalIdx), "gbk");
         Elements links = category.select("dd > a");
 
         String html;
@@ -48,31 +51,60 @@ public class HttpEngineTest {
             urltexts.add(new KvPair(link.attr("href").trim(), link.text().trim()));
         }
 
+        String fidx = dir + "index.html";
 
-        String xxx = "<!doctype html><html><head>";
-        xxx += "<meta name=\"viewport\" content=\"width=device-width, user-scalable=no\">";
-        xxx += "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />";
-        xxx += "<style type=\"text/css\">";
-        xxx += "body{line-height:30px;font-family:\"微软雅黑\"}";
-        xxx += "</style>";
-        xxx += "</head>";
-        xxx += "<body>";
+        if (!new File(fidx).exists()) {
+            String xxx = "<!doctype html><html><head>";
+            xxx += "<meta name=\"viewport\" content=\"width=device-width, user-scalable=no\">";
+            xxx += "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />";
+            xxx += "<style type=\"text/css\">";
+            xxx += "body{line-height:30px;font-family:\"微软雅黑\"}";
+            xxx += "</style>";
+            xxx += "</head>";
+            xxx += "<body>";
 
-        for (int i = 0; i < urltexts.size(); i++) {
-            KvPair urltext = urltexts.get(i);
-            xxx += "<a href=\"" + urltext.val + ".html\">" + urltext.val + "</a><br/>";
+            for (int i = 0; i < urltexts.size(); i++) {
+                KvPair urltext = urltexts.get(i);
+                xxx += "<a href=\"" + urltext.val + ".html\">" + urltext.val + "</a><br/>";
+            }
+            xxx += "</body>";
+            xxx += "</html>";
+            FileHelper.write(fidx, xxx);
         }
-        xxx += "</body>";
-        xxx += "</html>";
-        FileHelper.write(dir + "index.html", xxx);
+
+        ThreadPool tp = new ThreadPool();
 
         for (int i = 0; i < urltexts.size(); i++) {
             KvPair urltext = urltexts.get(i);
             if (new File(dir + urltext.val + ".html").exists()) continue;
 
-            System.out.println("downloading " + urltext.key + ", " + urltext.val);
+            Task task = new Task();
+            task.cur = urltext;
+            if(i > 0) task.pre = urltexts.get(i - 1);
+            if(i<urltexts.size()-1)urltexts.get(i+1);
+            tp.addTask(task);
+        }
 
-            html = eng.getRaw(surl + urltext.key).toString("gbk");
+        tp.join();
+    }
+
+    public static class Task implements Runnable {
+        public KvPair pre;
+        public KvPair cur;
+        public KvPair nxt;
+
+        @Override
+        public void run() {
+            if (new File(dir + cur.val + ".html").exists()) return;
+
+            System.out.println("downloading " + cur.key + ", " + cur.val);
+
+            String html = null;
+            try {
+                html = eng.getRaw(surl + cur.key).toString("gbk");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             Document d = Jsoup.parse(html);
             Elements content = d.select("#content");
 
@@ -85,23 +117,27 @@ public class HttpEngineTest {
                 t += "body{line-height:30px;font-family:\"微软雅黑\"}";
                 t += "</style>";
                 t += "</head>";
-                t += "<body><h2>" + urltext.val + "</h2><hr/>";
-                if (i > 0)
-                    t += "<a href=\"" + urltexts.get(i - 1).val + ".html\">上一页：" + urltexts.get(i - 1).val + "</a><br/>";
-                if (i < urltexts.size() - 1)
-                    t += "<a href=\"" + urltexts.get(i + 1).val + ".html\">下一页：" + urltexts.get(i + 1).val + "</a>";
+                t += "<body><h2>" + cur.val + "</h2><hr/>";
+                if (pre != null)
+                    t += "<a href=\"" + pre.val + ".html\">上一页：" + pre.val + "</a><br/>";
+                if (nxt != null)
+                    t += "<a href=\"" + nxt.val + ".html\">下一页：" + nxt.val + "</a>";
                 t += "<hr/>";
                 t += cont;
                 t += "<hr/>";
-                if (i > 0)
-                    t += "<a href=\"" + urltexts.get(i - 1).val + ".html\">上一页：" + urltexts.get(i - 1).val + "</a><br/>";
-                if (i < urltexts.size() - 1)
-                    t += "<a href=\"" + urltexts.get(i + 1).val + ".html\">下一页：" + urltexts.get(i + 1).val + "</a>";
+                if (pre != null)
+                    t += "<a href=\"" + pre.val + ".html\">上一页：" + pre.val + "</a><br/>";
+                if (nxt != null)
+                    t += "<a href=\"" + nxt.val + ".html\">下一页：" + nxt.val + "</a>";
                 t += "</body>";
                 t += "</html>";
-                FileHelper.write(dir + urltext.val + ".html", t);
+                try {
+                    FileHelper.write(dir + cur.val + ".html", t);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             } else {
-                System.out.println(urltext.key + "," + urltext.val);
+                System.out.println(cur.key + "," + cur.val);
             }
         }
     }
