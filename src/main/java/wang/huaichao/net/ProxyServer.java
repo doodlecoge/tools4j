@@ -1,7 +1,6 @@
 package wang.huaichao.net;
 
 
-import wang.huaichao.io.HttpInputStream;
 import wang.huaichao.text.Formatter;
 
 import java.io.*;
