@@ -10,10 +10,17 @@ import java.util.List;
  */
 public class ThreadPool {
     private int poolSize = 10;
+    private int activeWorkers = 0;
     private List<Runnable> taskQueue = new ArrayList<Runnable>();
     private List<Worker> workers = new ArrayList<Worker>();
 
     public ThreadPool() {
+        this(10);
+    }
+
+    public ThreadPool(int poolSize) {
+        this.poolSize = poolSize;
+        this.activeWorkers = poolSize;
         for (int i = 0; i < poolSize; i++) {
             Worker worker = new Worker(this);
             workers.add(worker);
@@ -21,25 +28,22 @@ public class ThreadPool {
         }
     }
 
-    public ThreadPool(int poolSize) {
-        this.poolSize = poolSize;
-    }
-
     public synchronized void addTask(Runnable task) {
         this.taskQueue.add(task);
         this.notifyAll();
     }
 
-    public synchronized Runnable getTask()
-            throws InterruptedException {
+    private synchronized Runnable getTask() throws InterruptedException {
         while (this.taskQueue.size() == 0) {
+            activeWorkers--;
             this.wait();
+            activeWorkers++;
         }
         return this.taskQueue.remove(0);
     }
 
     public void join() throws InterruptedException {
-        while (this.taskQueue.size() > 0) {
+        while (activeWorkers > 0 || this.taskQueue.size() > 0) {
             Thread.sleep(100);
         }
 
@@ -71,7 +75,7 @@ public class ThreadPool {
                     Runnable task = pool.getTask();
                     task.run();
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+
                 }
 
             }
