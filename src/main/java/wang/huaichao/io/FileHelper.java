@@ -4,11 +4,14 @@ import wang.huaichao.text.Formatter;
 
 import java.io.*;
 import java.nio.Buffer;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by Administrator on 2015/1/30.
  */
 public class FileHelper {
+
     public static ByteArrayOutputStream Read(String path) throws IOException {
         FileInputStream fis = new FileInputStream(path);
         BufferedInputStream bis = new BufferedInputStream(fis);
@@ -48,5 +51,18 @@ public class FileHelper {
         FileOutputStream fos = new FileOutputStream(file);
         fos.write(data.getBytes());
         fos.close();
+    }
+
+    public static String encodeFileName(String filename) {
+        return filename
+                .replace('\\', '＼')
+                .replace('/', '／')
+                .replace(':', '：')
+                .replace('*', '＊')
+                .replace('?', '？')
+                .replace('"', '＂')
+                .replace('<', '＜')
+                .replace('>', '＞')
+                .replace('|', '｜');
     }
 }

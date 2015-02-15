@@ -30,28 +30,29 @@ public class HttpEngineTest {
         }
     }
 
-    static String surl = "http://www.cilook.net/book/0/47/";
-    static String dir = "e:\\tmp\\";
+    //    static String surl = "http://www.cilook.net/book/0/47/";
+    static String surl = "http://www.23wx.com/html/50/50106/";
+    static String dir = "e:\\tmp\\shushi2\\";
     static HttpEngine eng = new HttpEngine();
+    static String fDownIdx = dir + "a.html";
+    static String fidx = dir + "index.html";
+
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
+        // download category
+        if (!new File(fDownIdx).exists()) {
+            FileHelper.write(fDownIdx, eng.getRaw(surl));
+            return;
+        }
 
-        String fLocalIdx = "E:\\tmp\\a.html";
-//        FileHelper.write(fLocalIdx, eng.getRaw(surl));
-
-        Document category = Jsoup.parse(new File(fLocalIdx), "gbk");
-        Elements links = category.select("dd > a");
-
-        String html;
+        Document category = Jsoup.parse(new File(fDownIdx), "gbk");
+        Elements links = category.select("td.L > a");
 
         LinkedList<KvPair> urltexts = new LinkedList<KvPair>();
-
         for (Element link : links) {
             urltexts.add(new KvPair(link.attr("href").trim(), link.text().trim()));
         }
-
-        String fidx = dir + "index.html";
 
         if (!new File(fidx).exists()) {
             String xxx = "<!doctype html><html><head>";
@@ -76,12 +77,11 @@ public class HttpEngineTest {
 
         for (int i = 0; i < urltexts.size(); i++) {
             KvPair urltext = urltexts.get(i);
-            if (new File(dir + urltext.val + ".html").exists()) continue;
 
             Task task = new Task();
             task.cur = urltext;
-            if(i > 0) task.pre = urltexts.get(i - 1);
-            if(i<urltexts.size()-1)urltexts.get(i+1);
+            if (i > 0) task.pre = urltexts.get(i - 1);
+            if (i < urltexts.size() - 1) task.nxt = urltexts.get(i + 1);
             tp.addTask(task);
         }
 
@@ -95,7 +95,9 @@ public class HttpEngineTest {
 
         @Override
         public void run() {
-            if (new File(dir + cur.val + ".html").exists()) return;
+            String fn = dir + FileHelper.encodeFileName(cur.val) + ".html";
+            System.out.println("file " + fn);
+            if (new File(fn).exists()) return;
 
             System.out.println("downloading " + cur.key + ", " + cur.val);
 
@@ -106,7 +108,7 @@ public class HttpEngineTest {
                 e.printStackTrace();
             }
             Document d = Jsoup.parse(html);
-            Elements content = d.select("#content");
+            Elements content = d.select("#contents");
 
             if (content.size() > 0) {
                 String cont = content.get(0).html();
@@ -119,25 +121,34 @@ public class HttpEngineTest {
                 t += "</head>";
                 t += "<body><h2>" + cur.val + "</h2><hr/>";
                 if (pre != null)
-                    t += "<a href=\"" + pre.val + ".html\">上一页：" + pre.val + "</a><br/>";
+                    t += "<a href=\"" + FileHelper.encodeFileName(pre.val)
+                            + ".html\">上一页：" + FileHelper.encodeFileName(pre.val)
+                            + "</a><br/>";
                 if (nxt != null)
-                    t += "<a href=\"" + nxt.val + ".html\">下一页：" + nxt.val + "</a>";
+                    t += "<a href=\"" + FileHelper.encodeFileName(nxt.val)
+                            + ".html\">下一页：" + FileHelper.encodeFileName(nxt.val) +
+                            "</a>";
                 t += "<hr/>";
                 t += cont;
                 t += "<hr/>";
                 if (pre != null)
-                    t += "<a href=\"" + pre.val + ".html\">上一页：" + pre.val + "</a><br/>";
+                    t += "<a href=\"" + FileHelper.encodeFileName(pre.val)
+                            + ".html\">上一页：" + FileHelper.encodeFileName(pre.val)
+                            + "</a><br/>";
                 if (nxt != null)
-                    t += "<a href=\"" + nxt.val + ".html\">下一页：" + nxt.val + "</a>";
-                t += "</body>";
+                    t += "<a href=\"" + FileHelper.encodeFileName(nxt.val)
+                            + ".html\">下一页：" + FileHelper.encodeFileName(nxt.val)
+                            + "</a>";
+                t += "<br/><br/></body>";
                 t += "</html>";
                 try {
-                    FileHelper.write(dir + cur.val + ".html", t);
+                    FileHelper.write(fn, t);
+                    System.out.println("xxxxxxxxxxxx" + fn);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
             } else {
-                System.out.println(cur.key + "," + cur.val);
+                System.out.println("eee==============" + cur.key + "," + cur.val);
             }
         }
     }

@@ -12,7 +12,7 @@ public class ThreadPoolTest {
         @Override
         public void run() {
             double random = Math.random();
-            int s = (int) (random * 1000 * 2);
+            int s = (int) (random * 1000 * 3 + 500);
             try {
                 Thread.sleep(s);
             } catch (InterruptedException e) {
@@ -23,8 +23,8 @@ public class ThreadPoolTest {
     }
 
     public static void main(String[] args) throws InterruptedException {
-        ThreadPool tp = new ThreadPool();
-        for (int i = 0; i < 20; i++) {
+        ThreadPool tp = new ThreadPool(5);
+        for (int i = 0; i < 30; i++) {
             Too too = new Too();
             too.id = i;
             tp.addTask(too);
