@@ -46,7 +46,6 @@ public class ThreadPool {
         while (activeWorkers > 0 || this.taskQueue.size() > 0) {
             Thread.sleep(100);
         }
-
         for (Worker worker : workers) {
             worker.halt();
             worker.join();
@@ -62,22 +61,19 @@ public class ThreadPool {
         }
 
         public void halt() {
-            this.interrupt();
             this.stop = true;
+            this.interrupt();
         }
 
         @Override
         public void run() {
             while (!stop) {
-
                 try {
                     Thread.sleep(10);
                     Runnable task = pool.getTask();
                     task.run();
                 } catch (InterruptedException e) {
-
                 }
-
             }
         }
     }
