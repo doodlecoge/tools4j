@@ -73,6 +73,7 @@ public class ThreadPool {
                     Runnable task = pool.getTask();
                     task.run();
                 } catch (InterruptedException e) {
+                } catch (Exception e) {
                 }
             }
         }
