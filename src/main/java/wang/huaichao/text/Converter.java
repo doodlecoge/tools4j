@@ -16,5 +16,20 @@ public class Converter {
         return b - 'a' >= 0 ? b - 'a' + 10 : b - 'A' >= 0 ? b - 'A' : b - '0';
     }
 
-
+    public static byte[] hexStringToByteArray(String hexStr) {
+        hexStr = hexStr.toLowerCase();
+        int len = hexStr.length() / 2;
+        byte[] bytes = new byte[len];
+        int val;
+        char c;
+        for (int i = 0; i < len; i++) {
+            c = hexStr.charAt(i * 2);
+            val = c >= 'a' ? c - 'a' : c - '0';
+            val *= 16;
+            c = hexStr.charAt(i * 2 + 1);
+            val += c >= 'a' ? c - 'a' : c - '0';
+            bytes[i] = (byte) val;
+        }
+        return bytes;
+    }
 }
