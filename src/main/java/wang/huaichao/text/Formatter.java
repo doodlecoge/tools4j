@@ -7,19 +7,7 @@ public class Formatter {
     private static String hexvals = "0123456789ABCDEF";
 
     public static String toHexString(byte[] bytes, int len) {
-        len = Math.min(len, bytes.length);
-        StringBuffer sb = new StringBuffer();
-        for (int i = 0; i < len; i++) {
-            if (i != 0) {
-                if (i % 32 == 0) {
-                    sb.append("\n");
-                } else if (i % 8 == 0) {
-                    sb.append("  ");
-                }
-            }
-            sb.append(byte2hex(bytes[i]) + ' ');
-        }
-        return sb.toString();
+        return toHexString(bytes, 0, len);
     }
 
     public static String toHexString(byte[] bytes, int off, int len) {
@@ -34,7 +22,7 @@ public class Formatter {
                 }
             }
             if (j % 32 == 0) {
-                sb.append(prepend(Integer.toHexString(j), 8, '0') + "   ");
+                sb.append(prePad(Integer.toHexString(j), 8, '0') + "   ");
             }
             sb.append(byte2hex(bytes[j % size]) + ' ');
         }
@@ -59,7 +47,7 @@ public class Formatter {
             }
 
             if (j % 32 == 0) {
-                sb.append(prepend(Integer.toHexString(j), 8, '0') + "   ");
+                sb.append(prePad(Integer.toHexString(j), 8, '0') + "   ");
             }
 
             b = bytes[i % size];
@@ -72,14 +60,14 @@ public class Formatter {
         return sb.toString();
     }
 
-    public static String prepend(String tag, int len, char pad) {
+    public static String prePad(String tag, int len, char pad) {
         int n = len - tag.length();
         if (n < 1) return tag;
         for (int i = 0; i < n; i++) tag = pad + tag;
         return tag;
     }
 
-    public static String append(String tag, int len, char pad) {
+    public static String postPad(String tag, int len, char pad) {
         int n = len - tag.length();
         if (n < 1) return tag;
         for (int i = 0; i < n; i++) tag += pad;
