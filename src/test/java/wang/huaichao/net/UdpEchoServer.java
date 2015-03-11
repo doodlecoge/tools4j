@@ -10,7 +10,7 @@ import java.net.SocketException;
  * Created by Administrator on 2015/3/10.
  */
 public class UdpEchoServer {
-    private static final int buffSize = 8;
+    private static final int buffSize = 1024;
     private DatagramSocket server;
 
 
@@ -30,11 +30,7 @@ public class UdpEchoServer {
         while (true) {
             try {
                 server.receive(recvPacket);
-
-                System.out.println("======================================" + recvPacket.getLength());
-                System.out.println(new String(recvPacket.getData()));
-                System.out.println();
-
+                System.out.println("recv: > " + new String(recvPacket.getData()));
                 _echo(recvPacket);
             } catch (IOException e) {
             }

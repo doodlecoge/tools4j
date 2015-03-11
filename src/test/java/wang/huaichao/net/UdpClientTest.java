@@ -19,12 +19,10 @@ public class UdpClientTest {
 //        client.recv();
 
         String send = "echoaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        UdpClient client = new UdpClient();
-        client.send(send.getBytes(), send.length(),
-                InetAddress.getByName("127.0.0.1"), 8888
-        );
+        UdpClient client = new UdpClient(InetAddress.getByName("127.0.0.1"), 8888);
+        client.send(send.getBytes(), send.length());
 
-        byte[] buff = new byte[10];
+        byte[] buff = new byte[1024];
         client.recv(buff);
 
         System.out.println(new String(buff));
