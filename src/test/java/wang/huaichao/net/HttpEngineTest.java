@@ -4,7 +4,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import sun.org.mozilla.javascript.internal.json.JsonParser;
 import wang.huaichao.ThreadPool;
 import wang.huaichao.io.FileHelper;
 import wang.huaichao.text.Formatter;
